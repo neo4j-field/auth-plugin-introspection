@@ -42,3 +42,4 @@ You can also toggle authentication and authorization enabled individually by onl
  and `dbms.security.authorization_providers`, or it will not be loaded)
 
 To enable SSO using the Neo4j Browser follow the instructions here: https://neo4j.com/docs/operations-manual/current/tutorial/tutorial-sso-configuration/
+
