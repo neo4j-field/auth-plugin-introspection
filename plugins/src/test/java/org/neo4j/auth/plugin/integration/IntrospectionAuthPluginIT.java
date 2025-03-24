@@ -26,7 +26,11 @@ import static org.mockserver.model.HttpRequest.request;
 
 import com.neo4j.configuration.SecuritySettings;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 
 import org.junit.jupiter.api.*;
@@ -43,16 +47,31 @@ import org.neo4j.harness.Neo4j;
 public class IntrospectionAuthPluginIT {
     private static final Config config =
             Config.builder().withLogging(Logging.none()).withoutEncryption().build();
-    private static Neo4j server;
-    private static Driver  driver;
+    public static final String BASE_INTROSPECTION_CONF = "base-introspection.conf";
+    public static final String USERINFO_INTROSPECTION_CONF = "userinfo-introspection.conf";
+    public static final String BOTH_INTROSPECTION_CONF = "both-introspection.conf";
+    private Neo4j server;
+    private Driver  driver;
     private ClientAndServer mockServer;
+    private static Path tempFolder;
 
     private static final String token = "test-token";
 
     @BeforeAll
-    public static void setUp() throws IOException {
+    public static void setup() throws IOException {
+        tempFolder = Files.createTempDirectory("neo4j");
+        tempFolder.toFile().deleteOnExit();
+        tempFolder.resolve("conf").toFile().mkdirs();
+        System.out.println("Temp folder: " + tempFolder.toAbsolutePath());
+    }
+
+    public void setUpNe4j(String confFile ) throws IOException {
+        File configFile = new File(System.getProperty("user.dir") +
+                "/src/test/resources/conf/"+confFile);
+        Files.copy(configFile.toPath(), tempFolder.resolve("conf/introspection.conf"), StandardCopyOption.REPLACE_EXISTING);
         // Start up server with authentication enables
         server = newInProcessBuilder()
+                .withConfig(GraphDatabaseSettings.neo4j_home,tempFolder.toAbsolutePath())
                 .withConfig(GraphDatabaseSettings.auth_enabled, true)
                 .withConfig(
                         SecuritySettings.authentication_providers,
@@ -64,28 +83,32 @@ public class IntrospectionAuthPluginIT {
         driver = GraphDatabase.driver(server.boltURI(), AuthTokens.basic("neo4j", "neo4j"), config);
     }
 
-    private void setUpMockServer(int statusCode, String response) {
-        mockServer = ClientAndServer.startClientAndServer(8080);
-        mockServer.when(request().withMethod("POST"), Times.unlimited())
-                .respond(HttpResponse.response().withStatusCode(statusCode)
-                        .withBody(response));
+    private void setUpMockServer(int postStatusCode, String postResponse) {
+        setUpMockServer(postStatusCode,postResponse,500,null);
     }
 
-    @AfterAll
-    public static void tearDown() {
-        server.close();
-        driver.close();
+    private void setUpMockServer(int postStatusCode, String postResponse, int getStatusCode, String getResponse) {
+        mockServer = ClientAndServer.startClientAndServer(8080);
+        mockServer.when(request().withMethod("POST"), Times.unlimited())
+                .respond(HttpResponse.response().withStatusCode(postStatusCode)
+                        .withBody(postResponse));
+        mockServer.when(request().withMethod("GET"), Times.unlimited())
+                .respond(HttpResponse.response().withStatusCode(getStatusCode)
+                        .withBody(getResponse));
     }
 
     @AfterEach
-    public void tearDownMockServer() {
+    public void tearDown() {
+        server.close();
+        driver.close();
         if (mockServer != null) {
             mockServer.stop();
         }
     }
 
     @Test
-    public void shouldAuthenticateNeo4jUser() {
+    public void shouldAuthenticateNeo4jUser() throws IOException {
+        setUpNe4j(BASE_INTROSPECTION_CONF);
         setUpMockServer(200, "{\"active\":true,\"username\":\"test\",\"groups\":[\"/Admin\"]}");
         //AuthTokens.bearer is not currently supported by the AuthPlugin.Adaptor
         try (Session session = driver.session(Session.class,AuthTokens.basic("test", token))) {
@@ -95,7 +118,30 @@ public class IntrospectionAuthPluginIT {
     }
 
     @Test
-    public void shouldFailAuthenticateUser() {
+    public void shouldAuthenticateNeo4jUserUserInfo() throws IOException {
+        setUpNe4j(USERINFO_INTROSPECTION_CONF);
+        setUpMockServer(500, null,200,"{\"username\":\"test\",\"groups\":[\"/Admin\"]}");
+        //AuthTokens.bearer is not currently supported by the AuthPlugin.Adaptor
+        try (Session session = driver.session(Session.class,AuthTokens.basic("test", token))) {
+            Value single = session.run("RETURN 1").single().get(0);
+            assertThat(single.asLong(), equalTo(1L));
+        }
+    }
+
+    @Test
+    public void shouldAuthenticateNeo4jUserBoth() throws IOException {
+        setUpNe4j(BOTH_INTROSPECTION_CONF);
+        setUpMockServer(200, "{\"active\":true}",200,"{\"username\":\"test\",\"groups\":[\"/Admin\"]}");
+        //AuthTokens.bearer is not currently supported by the AuthPlugin.Adaptor
+        try (Session session = driver.session(Session.class,AuthTokens.basic("test", token))) {
+            Value single = session.run("RETURN 1").single().get(0);
+            assertThat(single.asLong(), equalTo(1L));
+        }
+    }
+
+    @Test
+    public void shouldFailAuthenticateUser() throws IOException {
+        setUpNe4j(BASE_INTROSPECTION_CONF);
         setUpMockServer(200, "{\"active\":false}");
         try (Session session = driver.session(Session.class,AuthTokens.basic("dummy", token))) {
             Value single = session.run("RETURN 1").single().get(0);
@@ -107,7 +153,8 @@ public class IntrospectionAuthPluginIT {
     }
 
     @Test
-    public void shouldFailIntrospection() {
+    public void shouldFailIntrospection() throws IOException {
+        setUpNe4j(BASE_INTROSPECTION_CONF);
         setUpMockServer(500, null);
         try (Session session = driver.session(Session.class,AuthTokens.basic("dummy", token))) {
             Value single = session.run("RETURN 1").single().get(0);
@@ -119,7 +166,8 @@ public class IntrospectionAuthPluginIT {
     }
 
     @Test
-    public void shouldFailBadResponse() {
+    public void shouldFailBadResponse() throws IOException {
+        setUpNe4j(BASE_INTROSPECTION_CONF);
         setUpMockServer(200, "\"noJsonformat\":true");
         try (Session session = driver.session(Session.class,AuthTokens.basic("dummy", token))) {
             Value single = session.run("RETURN 1").single().get(0);
@@ -131,7 +179,8 @@ public class IntrospectionAuthPluginIT {
     }
 
     @Test
-    public void shouldAuthenticateButFailToCreate() {
+    public void shouldAuthenticateButFailToCreate() throws IOException {
+        setUpNe4j(BASE_INTROSPECTION_CONF);
         setUpMockServer(200, "{\"active\":true,\"username\":\"moraeus\",\"groups\":[\"/Reader\"]}");
         try(Session session = driver.session(Session.class,AuthTokens.basic("moraeus", token))) {
             Value single = session.run("RETURN 1").single().get(0);
@@ -146,7 +195,8 @@ public class IntrospectionAuthPluginIT {
     }
 
     @Test
-    public void shouldAuthenticateAndAuthorizeKalleMoraeusAsAdmin() {
+    public void shouldAuthenticateAndAuthorizeKalleMoraeusAsAdmin() throws IOException {
+        setUpNe4j(BASE_INTROSPECTION_CONF);
         setUpMockServer(200, "{\"active\":true,\"username\":\"moraeus\",\"groups\":[\"/Admin\"]}");
         try(Session session = driver.session(Session.class,AuthTokens.basic("moraeus", token))) {
 
@@ -166,7 +216,29 @@ public class IntrospectionAuthPluginIT {
     }
 
     @Test
-    public void shouldFailBadConfig() {
+    public void shouldAuthenticateAndAuthorizeKalleMoraeusAsAdminUserInfo() throws IOException {
+        setUpNe4j(USERINFO_INTROSPECTION_CONF);
+        setUpMockServer(500, null,200,"{\"username\":\"test\",\"groups\":[\"/Admin\"]}");
+        try(Session session = driver.session(Session.class,AuthTokens.basic("moraeus", token))) {
+
+            session.run("CREATE (a:Person {name:'Kalle Moraeus', title:'Riksspelman'})");
+
+            Result result =
+                    session.run("MATCH (a:Person) WHERE a.name = 'Kalle Moraeus' RETURN a.name AS name, a.title AS title");
+            assertTrue(result.hasNext());
+            while (result.hasNext()) {
+                Record record = result.next();
+                assertThat(record.get("name").asString(), equalTo("Kalle Moraeus"));
+                assertThat(record.get("title").asString(), equalTo("Riksspelman"));
+                System.out.println(
+                        record.get("title").asString() + " " + record.get("name").asString());
+            }
+        }
+    }
+
+    @Test
+    public void shouldFailBadConfig() throws IOException {
+        setUpNe4j(BASE_INTROSPECTION_CONF);
         setUpMockServer(404, null);
         try (Session session = driver.session(Session.class,AuthTokens.basic("dummy", token))) {
             Value single = session.run("RETURN 1").single().get(0);

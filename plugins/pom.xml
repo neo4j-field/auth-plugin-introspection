@@ -20,7 +20,7 @@
   <parent>
     <groupId>org.neo4j.auth</groupId>
     <artifactId>neo4j-auth-plugins-parent</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0</version>
     <relativePath>..</relativePath>
   </parent>
 

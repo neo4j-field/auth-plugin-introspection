@@ -1,15 +1,15 @@
 /**
  * Copyright (c) 2002-2017 "Neo Technology,"
  * Network Engine for Objects in Lund AB [http://neotechnology.com]
- * <p>
+ *
  * This file is part of Neo4j.
- * <p>
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * <p>
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * <p>
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -38,6 +38,9 @@ public class IntrospectionAuthPlugin extends AuthPlugin.Adapter {
     private String clientId;
     private String clientSecret;
     private String introspectionUri;
+    private String userInfoUri;
+    private boolean validateIntrospection;
+    private boolean getGroupsFromUserInfo;
     private String userNameField;
     private String groupField;
     private Map<String,String> groupMap;
@@ -50,10 +53,21 @@ public class IntrospectionAuthPlugin extends AuthPlugin.Adapter {
 
         try
         {
-            Map<String,Object> results = getIntrospectionResults(introspectionUri,access_token);
-
-            if(results==null||!(boolean)results.getOrDefault("active",false)){
-                throw new AuthenticationException("Introspection failed");
+            Map<String, Object> results = null;
+            if(validateIntrospection) {
+                results = getIntrospectionResults(access_token);
+                if (results == null || !(boolean) results.getOrDefault("active", false)) {
+                    throw new AuthenticationException("Introspection failed");
+                }
+            }
+            if(getGroupsFromUserInfo) {
+                results = getUserInfoResults(access_token);
+                if (results == null) {
+                    throw new AuthenticationException("User Info Lookup failed");
+                }
+            }
+            if (results == null) {
+                throw new AuthenticationException("No Token Details Retrieved.  Configuration may not be valid");
             }
 
             String user = (String)results.get(userNameField);
@@ -88,7 +102,10 @@ public class IntrospectionAuthPlugin extends AuthPlugin.Adapter {
     private void loadConfig() {
         Properties properties = loadProperties();
 
+        validateIntrospection = Boolean.parseBoolean(properties.getProperty("auth.oauth.validate_introspection","true"));
         introspectionUri = properties.getProperty( "auth.oauth.introspection_uri" );
+        userInfoUri = properties.getProperty( "auth.oauth.user_info_uri" );
+        getGroupsFromUserInfo = Boolean.parseBoolean(properties.getProperty("auth.oauth.get_groups_from_user_info","false"));
         clientSecret = properties.getProperty( "auth.oauth.client_secret" );
         clientId = properties.getProperty( "auth.oauth.client_id" );
         userNameField = properties.getProperty( "auth.oauth.claims.username","username" );
@@ -105,9 +122,11 @@ public class IntrospectionAuthPlugin extends AuthPlugin.Adapter {
                 }
             }
         } else {
-            api.log().error("No groups found in config file!");
+            api.log().error("No groups found in conf file!");
         }
-
+        if(!validateIntrospection&&!getGroupsFromUserInfo){
+            api.log().error("Invalid configuration.  Either validate_introspection or get_groups_from_user_info should be true.");
+        }
 
     }
 
@@ -125,19 +144,19 @@ public class IntrospectionAuthPlugin extends AuthPlugin.Adapter {
             }
             properties.load(inputStream);
         } catch (IOException e) {
-            api.log().error("Failed to load config file '" + configFile + "'.");
+            api.log().error("Failed to load conf file '" + configFile + "'.");
         }
         return properties;
     }
 
 
-    private Map<String, Object> getIntrospectionResults(String requestUrl, String access_token) throws Exception {
+    private Map<String, Object> getIntrospectionResults(String access_token) throws Exception {
         Map<String,String> parameters = new HashMap<>();
         parameters.put("token", access_token);
-        parameters.put("client_id", clientId);
-        parameters.put("client_secret", clientSecret);
+        if(clientId!=null) {parameters.put("client_id", clientId);}
+        if(clientSecret!=null) {parameters.put("client_secret", clientSecret);}
 
-        URL url = new URL(requestUrl);
+        URL url = new URL(introspectionUri);
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setRequestMethod("POST");
         connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
@@ -155,6 +174,20 @@ public class IntrospectionAuthPlugin extends AuthPlugin.Adapter {
             os.flush();
         }
 
+        return getResponse(connection);
+    }
+    private Map<String, Object> getUserInfoResults(String access_token) throws Exception {
+
+        URL url = new URL(userInfoUri);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("GET");
+        connection.setRequestProperty("Authorization", "Bearer " + access_token);
+        connection.setDoOutput(true);
+
+        return getResponse(connection);
+    }
+
+    private HashMap getResponse(HttpURLConnection connection) throws IOException {
         int responseCode = connection.getResponseCode();
         api.log().debug("Response Code: " + responseCode);
 
@@ -172,4 +205,5 @@ public class IntrospectionAuthPlugin extends AuthPlugin.Adapter {
         ObjectMapper objectMapper = new ObjectMapper();
         return objectMapper.readValue(response.toString(), HashMap.class);
     }
+
 }
