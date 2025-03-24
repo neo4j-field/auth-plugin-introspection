@@ -153,6 +153,19 @@ public class IntrospectionAuthPluginIT {
     }
 
     @Test
+    public void shouldFailAuthenticateUserUserInfo() throws IOException {
+        setUpNe4j(USERINFO_INTROSPECTION_CONF);
+        setUpMockServer(500, null,401,null);
+        try (Session session = driver.session(Session.class,AuthTokens.basic("dummy", token))) {
+            Value single = session.run("RETURN 1").single().get(0);
+            //should throw an exception
+            assertThat(single.asLong(), equalTo(0L));
+        } catch (AuthenticationException e) {
+            assertTrue(true);
+        }
+    }
+
+    @Test
     public void shouldFailIntrospection() throws IOException {
         setUpNe4j(BASE_INTROSPECTION_CONF);
         setUpMockServer(500, null);
