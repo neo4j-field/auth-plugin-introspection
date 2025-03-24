@@ -11,7 +11,7 @@
 
   <groupId>org.neo4j.auth</groupId>
   <artifactId>neo4j-auth-plugins-parent</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.1</version>
 
   <packaging>pom</packaging>
   <name>Neo4j Introspection Auth Plugin Project</name>
