@@ -55,7 +55,7 @@ public class IntrospectionAuthPluginIT {
     private ClientAndServer mockServer;
     private static Path tempFolder;
 
-    private static final String token = "test-token";
+    private static final String token = "eyJhbGcitest-token";
 
     @BeforeAll
     public static void setup() throws IOException {

@@ -50,6 +50,10 @@ public class IntrospectionAuthPlugin extends AuthPlugin.Adapter {
         char[] password = authToken.credentials();
         String access_token = new String (password);
         Set<String> neo4JRoles = new HashSet<>();
+        if(!access_token.startsWith("eyJhbGc")){
+            //ignore non-token requests
+            return null;
+        }
 
         try
         {
@@ -71,7 +75,7 @@ public class IntrospectionAuthPlugin extends AuthPlugin.Adapter {
             }
 
             String user = (String)results.get(userNameField);
-            api.log().info("Log in by " + user);
+            //api.log().info("Log in by " + user);
 
             List<String> groups = (List<String>) results.get(groupField);
             for(String group : groups){
