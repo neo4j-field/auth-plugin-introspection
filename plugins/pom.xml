@@ -20,7 +20,7 @@
   <parent>
     <groupId>org.neo4j.auth</groupId>
     <artifactId>neo4j-auth-plugins-parent</artifactId>
-    <version>1.0.1</version>
+    <version>1.0.2</version>
     <relativePath>..</relativePath>
   </parent>
 
@@ -190,35 +190,6 @@
         <configuration>
           <argLine>${test.runner.jvm.settings}</argLine>
         </configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-dependency-plugin</artifactId>
-        <version>2.10</version>
-        <executions>
-          <execution>
-            <id>copy</id>
-            <phase>package</phase>
-            <goals>
-              <goal>copy</goal>
-            </goals>
-            <configuration>
-              <artifactItems>
-                <artifactItem>
-                  <groupId>org.neo4j.auth</groupId>
-                  <artifactId>neo4j-auth-plugins</artifactId>
-                  <version>${project.version}</version>
-                  <type>jar</type>
-                  <overWrite>true</overWrite>
-                  <outputDirectory>${project.build.directory}/../../target/neo4j/neo4jhome/plugins</outputDirectory>
-                </artifactItem>
-              </artifactItems>
-              <!--<outputDirectory>${project.build.directory}/../../target/neo4j/neo4jhome/plugins</outputDirectory>-->
-              <overWriteReleases>false</overWriteReleases>
-              <overWriteSnapshots>true</overWriteSnapshots>
-            </configuration>
-          </execution>
-        </executions>
       </plugin>
     </plugins>
   </build>

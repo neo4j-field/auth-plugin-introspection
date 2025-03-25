@@ -50,7 +50,7 @@ public class IntrospectionAuthPlugin extends AuthPlugin.Adapter {
         char[] password = authToken.credentials();
         String access_token = new String (password);
         Set<String> neo4JRoles = new HashSet<>();
-        if(!access_token.startsWith("eyJhbGc")){
+        if(!isJWT(access_token)){
             //ignore non-token requests
             return null;
         }
@@ -75,8 +75,9 @@ public class IntrospectionAuthPlugin extends AuthPlugin.Adapter {
             }
 
             String user = (String)results.get(userNameField);
-            //api.log().info("Log in by " + user);
-
+            if(user==null|| user.isEmpty()) {
+                throw new AuthenticationException("No username found in claim " + userNameField);
+            }
             List<String> groups = (List<String>) results.get(groupField);
             for(String group : groups){
                 if(groupMap.containsKey(group)){
@@ -208,6 +209,36 @@ public class IntrospectionAuthPlugin extends AuthPlugin.Adapter {
 
         ObjectMapper objectMapper = new ObjectMapper();
         return objectMapper.readValue(response.toString(), HashMap.class);
+    }
+
+    public static boolean isJWT(String token) {
+        // Split the token into parts
+        String[] parts = token.split("\\.");
+        if (parts.length != 3) {
+            return false;
+        }
+
+        try {
+            // Decode and check the header and payload
+            Base64.Decoder decoder = Base64.getDecoder();
+            String header = new String(decoder.decode(parts[0]));
+            String payload = new String(decoder.decode(parts[1]));
+
+            // Ensure the header and payload are valid JSON
+            return isJSON(header) && isJSON(payload);
+        } catch (IllegalArgumentException e) {
+            return false; // If decoding fails
+        }
+    }
+
+    private static boolean isJSON(String str) {
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            objectMapper.readValue(str, HashMap.class);
+            return true;
+        } catch (Exception e) {
+            return false; // Not valid JSON
+        }
     }
 
 }

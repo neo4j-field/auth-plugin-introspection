@@ -23,6 +23,18 @@ If no file is found in the the config folder, the resource file will be used.
 
 Edit the Introspection configuration file you just copied to `<NEO4J-HOME>/config/` and update the setting for your oauth provider
 
+Set the claims and role mapping
+
+     auth.oauth.claims.username=username
+     auth.oauth.claims.groups=groups
+     auth.oauth.group_to_role_mapping="/Admin"=admin;"/Reader"=reader
+
+To enable Introspection set `auth.oauth.validate_introspection=true` then use the Auth Server configuration to set `auth.oauth.client_id` and `auth.oauth.client_secret` (if needed) as well as `auth.oauth.introspection_uri`
+
+If the groups are not returned from the Introspection response, they can be retrieved from the User Info endpoint by setting `auth.oauth.get_groups_from_user_info=true` and `auth.oauth.user_info_uri`
+
+If using the User Info endpoint, the Introspection can be skipped to avoid the additional network traffic.  One of either Introspection or User Info must be enabled or all log ins will fail.
+
 Edit the Neo4j configuration file `<NEO4J-HOME>/conf/neo4j.conf` and add the `dbms.security.authentication_providers` 
 and `dbms.security.authorization_providers` settings, e.g.:
 
